@@ -1,0 +1,40 @@
+# ============================================================
+# 城市形态–功能关联 GNN 框架 — 依赖清单 (proven-good 组合, 2026-07-31 实测)
+# 环境: Python 3.11 + CPU (无 CUDA)
+# ⚠️ 铁律: numpy 必须锁 1.24.4
+#    升级到 numpy>=2.x 会让 torch 2.2.0 的 C 扩展初始化失败
+#    (报 "Numpy is not available" / "Failed to initialize NumPy")。
+#    若需读 numpy 2.x 存的 pkl, 用仓库内 numpy_pickle_shim.py 垫片兼容。
+# ============================================================
+
+# ---- 核心 (版本敏感, 锁定) ----
+numpy==1.24.4
+torch==2.2.0
+torch_geometric==2.4.0
+
+# ---- PyG 扩展 (需匹配 torch 2.2.0 + CPU) ----
+# 这些包不在 PyPI 普通索引, 需用 PyG 官方 wheel 安装:
+#   pip install torch_scatter torch_sparse torch_cluster torch_spline_conv \
+#       -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
+torch_scatter==2.1.2
+torch_sparse==0.6.18
+torch_cluster==1.6.3
+torch_spline_conv==1.2.2
+
+# ---- 地理与数据处理 ----
+geopandas==1.0.1
+shapely==2.0.7
+pyproj==3.6.1
+pandas==2.3.1
+networkx==3.2.1
+
+# ---- 机器学习 / 降维 / 可视化 ----
+scikit-learn==1.6.1
+scipy==1.13.1
+umap-learn==0.5.11
+numba==0.60.0        # UMAP 后端; 若 UMAP 在 Windows 上原生崩溃, 优先升级此包 (勿动 numpy/torch)
+pynndescent==0.6.0   # UMAP 的 kNN 后端
+matplotlib==3.9.4
+
+# ---- 可选 ----
+# captum>=0.7.0     # 若改用 captum 做特征归因 (当前用 PyG 自带 GNNExplainer)

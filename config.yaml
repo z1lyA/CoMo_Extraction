@@ -1,0 +1,165 @@
+# =============================================================================
+# 城市形态-功能 GNN 项目 · 统一配置文件 (config.yaml)
+# -----------------------------------------------------------------------------
+# 所有脚本默认读取本文件。run_pipeline.py 一条命令串起全流程：
+#     清洗 → 建图 → 训练 → 解释(④产F_S+G_S) → 出子类(⑤) → 回贴定地块构型(⑥)
+# 想调任何参数，改这里即可；每段下方都注明「能设什么 / 取值建议」。
+# 快速验证：把 training.quick_fold 设为 true（单折，几分钟跑通整条链）。
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1) data —— 数据文件路径（清洗后建筑 + 地块功能标签 + 坐标系）
+# -----------------------------------------------------------------------------
+data:
+  buildings_shp: data/sinobf_Shenzhen_buildings.shp  # SinoBF-1 深圳建筑(经 prepare_city.py 挂 block_id, 纯几何, 无高度)
+  raw_buildings_shp: data/South_Guangdong_Shenzhen_SinoBF-1/South_Guangdong_Shenzhen_SinoBF-1.shp  # 原始建筑 shp（cleaning.enable=true 时作为清洗原料）
+  landuse_shp: data/function_Shenzhen.shp           # 地块功能 shp（5 类标签：Level1 字段）
+  buildings_id_field: buildingid           # 建筑唯一 ID 字段
+  buildings_height_field: Height           # 建筑高度字段名（仅当 has_height=true 时读取）
+  has_height: false                        # ★SinoBF-1 深圳 shp 无高度字段(只要几何) -> 自动剔除 Height 特征(23→22维)
+  buildings_block_id_field: block_id       # 建筑所属地块 ID 字段
+  landuse_block_id_field: block_id         # 地块 ID 字段
+  landuse_label_field: Level1              # 地块功能标签字段
+  crs: EPSG:32650                           # 统一坐标系（SinoBF-1+EULUC 原为 4326，建图时统一重投影到此）
+
+# -----------------------------------------------------------------------------
+# 2) cleaning —— 数据清洗（仅当 pipeline.run_clean=true 时执行；关掉则直接读 buildings_shp）
+# -----------------------------------------------------------------------------
+cleaning:
+  enable: false                            # true=从 raw 重新清洗（reproducible）；false=复用已清洗 buildings_shp
+  raw_buildings_shp: data/South_Guangdong_Shenzhen_SinoBF-1/South_Guangdong_Shenzhen_SinoBF-1.shp
+  cleaned_buildings_shp: data/cleaned_buildings.shp   # cleaning.enable=true 时的清洗产物路径
+  enable_merge: true                       # true=合并重叠/接触建筑(buffer 0.001m，Height 取 max)
+  min_area: 30.0                           # 面积下限(m²)：小于此值剔除（噪声小建筑）
+  max_elongation: 15.0                     # 细长比上限：大于此值视为线状地物
+  elongation_area_limit: 500.0             # 细长比判定仅对「面积<此值」的建筑生效（大建筑放宽）
+  merge_buffer_distance: 0.001             # 合并 buffer(m)：接触/重叠建筑的融合容差
+  fid_column: form_id
+  height_column: Height
+  form_id_column: form_id
+  compute_crs: EPSG:32650
+
+# -----------------------------------------------------------------------------
+# 3) device —— 运行设备
+# -----------------------------------------------------------------------------
+device:
+  use_gpu: true                            # true=优先用 GPU（若可用）；无 CUDA 环境会自动回退 CPU
+  force_cpu: false                         # true=强制 CPU（调试/无 GPU 时用）
+
+# -----------------------------------------------------------------------------
+# 4) graph —— 图构建参数（Delaunay 三角剖分 + 距离阈值截断）
+# -----------------------------------------------------------------------------
+graph:
+  distance_threshold: 200                  # 固定模式下的边距离阈值(m)：两建筑质心距离超过则不连边
+  threshold_mode: fixed                    # 'fixed'=用上面 distance_threshold；'auto'=按边长分布自动选(见下)
+  auto_quantile: 0.95                      # threshold_mode=auto 时取边长分布的该分位数作阈值（对应「尾部密度近零」）
+  centroid_merge_threshold: 0
+  min_buildings_per_block: 4               # 单地块最少建筑数：不足则跳过该地块（避免退化图）
+
+# -----------------------------------------------------------------------------
+# 5) model —— GNN 模型结构
+# -----------------------------------------------------------------------------
+model:
+  hidden_dim: 128                         # 隐藏层维度
+  output_dim: 5                           # 输出类别数（5 类地块功能）
+  pool_ratio: 0.3                         # SAGPooling 保留比例
+  dropout: 0.5                            # Dropout 比例
+  edge_weight: none                        # 'none'=不加权（参照研究基线）；'inverse'=质心反距离加权
+
+# -----------------------------------------------------------------------------
+# 6) output —— 图数据输出
+# -----------------------------------------------------------------------------
+output:
+  base_output_dir: results/Graphs         # 图数据输出根目录（实际子目录带时间戳）
+
+# -----------------------------------------------------------------------------
+# 7) training —— 训练超参
+# -----------------------------------------------------------------------------
+training:
+  n_splits: 10                            # 10 折交叉验证
+  quick_fold: false                          # ★ true=单折快速冒烟测试（几分钟跑通整条链，先确认代码可行）；false=真实 10 折交叉验证
+  epochs: 1000                            # 每折最大 epoch（配合 early-stopping）
+  patience: 100                           # early-stopping 耐心：验证指标多少轮不涨则停
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 5.0e-05
+  label_smoothing: 0.1
+  seed: 42                                # 随机种子（保证可复现）
+
+# -----------------------------------------------------------------------------
+# 8) training_paths —— 路径（建图脚本会自动写回正确的 graph_data_dir）
+# -----------------------------------------------------------------------------
+training_paths:
+  experiment_dir: results/Experiments      # 训练产物（best_model.pth / 指标）目录
+  graph_data_dir: ""                       # 占位空串；Build_Graphs（步骤②建图）跑完会自动写回真实目录，勿手改
+
+# -----------------------------------------------------------------------------
+# 9) explainer —— XGNN 特征重要性解释（步骤④）
+# -----------------------------------------------------------------------------
+explainer:
+  top_k: 3                                # 每类取的关键形态特征数；各类 Top-K 并集去重后 = 全局 F_S（核心城市形态特征集）
+  max_samples_per_class: 100              # 每类最多解释样本数
+  explain_epochs: 50                      # GNNExplainer 优化轮数
+  fs_threshold: 0.950                    # 单地块 F_S 的特征重要性阈值（参照研究 0.950）：≥此值的特征计入该地块的关键形态指标；该地块若全空则回退取 Top-K
+  gs_threshold: 0.900                    # G_S 节点重要性硬阈值（仅作可选硬截断，一般不触发）
+  gs_top_frac: 0.25                       # G_S 回退：当节点重要性没达到 gs_threshold 时，取前 25% 最重要的建筑作为核心子图关键建筑
+                                           # 全局「核心城市形态特征集」固定取「各功能类别 Top-K(=上面的 top_k) 关键特征」的并集去重，
+                                           # 数量由数据自然产生、不做固定数量截断：参照研究的 10 个核心形态指标即此类并集的结果。
+
+# -----------------------------------------------------------------------------
+# 10) clustering —— 出核心形态子类（步骤⑤：UMAP + KMeans → T1..TK）
+# -----------------------------------------------------------------------------
+clustering:
+  feature_source: fs_from_explainer      # 聚类用的「特征子空间」来源：
+                                           #   fs_from_explainer=读步骤④全局F_S的 selected_features（④成前置）；
+                                           #   custom=下面 custom_features（真正无GNN、④可跳过）；
+                                           #   all=全部特征(含/不含高度，取决于 has_height)
+  custom_features:                        # feature_source=custom 时生效（参照研究子类用的形态子集）
+    - Complexity_index
+    - IPQ
+    - Height
+    - Perimeter
+    - Covered_area_ratio
+    - LCO
+    - Max_circularity
+    - Area
+    - Fractality
+    - Solidity
+  umap_n_neighbors: 15                    # UMAP 邻居数（建议 15-50）
+  umap_min_dist: 0.1                      # UMAP 最小距离（建议 0.01-0.5，越小簇越散）
+  dim_reduction: auto                     # 降维方式：auto(先试UMAP进程内,崩了自动回退PCA) | umap(强制UMAP,崩则报错) | pca(直接PCA最稳)
+  min_k: 4                                # KMeans 最小聚类数（核心类型数 K 下界，非固定8；用4-20搜索）
+  max_k: 20                               # KMeans 最大聚类数（上界；按轮廓系数自动选最优 K）
+  k_search_max_samples: 20000             # 自动选 K / 算轮廓时的子采样上限（防全量 O(n²) 爆内存；最终聚类仍用全量）
+  use_gs_buildings: true                  # true=聚类只用④ GNNExplainer 提取的核心子图建筑(G_S)而非全部建筑，大幅减少UMAP点数
+  random_state: 42
+  tune:                                  # UMAP 超参自动扫描(tune_umap.py)的候选网格
+    n_neighbors_grid: [15, 30]            # 扫描的邻居数候选
+    min_dist_grid: [0.05, 0.25]           # 扫描的最小距离候选（越小簇越散）
+  num_representative: 30                  # 每类提取的代表建筑数（用于科学命名/出图）
+  name_top_n: 2                           # 自动命名时取「|z-score 均值| 最大」的前 N 个特征拼接成描述名
+  auto_name: false                        # false(默认)=类型只保留 T1..TK 机械编号，命名交用户目视解译；true=自动命名写入 cluster_names
+  extract_shp: true                       # true=导出代表性建筑 shp
+  top_n_per_type: 4                       # 每个形态类型取「top-N 最显著特征」用于构建核心特征集(常用3或4)
+
+# -----------------------------------------------------------------------------
+# 11) plot_config —— 步骤⑥：回贴定地块构型（主导/多样）
+# -----------------------------------------------------------------------------
+plot_config:
+  dominant_threshold_general: 0.50        # 一般地块主导阈值：核心建筑中某类型占比≥此值才算主导
+  dominant_threshold_residential: 0.60    # 住宅地块主导阈值（更严，参照研究住宅用 60%）
+  min_dominant_buildings: 2               # 主导型最少关键建筑数（少于此数判为 diverse）
+  residential_class_names:               # 命中这些功能名的地块套用上面的更严阈值；按数据的标签取值填写
+    - "居住"                               #   （本项目标签为 Level1 数值，住宅=1.0，程序会自动按 1.0↔「居住」对应识别）
+  extract_shp: false                      # true=按 block_id 关联 function.shp 导出空间落图（需 geopandas）
+
+# -----------------------------------------------------------------------------
+# 12) pipeline —— 全流程总开关（run_pipeline.py 用：每步可单独开关，失败即停）
+# -----------------------------------------------------------------------------
+pipeline:
+  run_clean: false                        # 步骤① 清洗（复用已清洗数据时关掉，避免重写 shp）
+  run_build: true                         # 步骤② 建图
+  run_train: true                         # 步骤③ GNN 训练
+  run_explain: true                       # 步骤④ XGNN 解释（产 F_S + G_S）
+  run_cluster: true                       # 步骤⑤ 出子类（UMAP+KMeans → T1..TK）
+  run_plot_config: true                   # 步骤⑥ 回贴定地块构型（主导/多样）

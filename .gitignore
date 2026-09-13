@@ -1,0 +1,57 @@
+# ============================================================
+# 城市形态–功能关联 GNN 框架 —— 仓库忽略规则
+# 本仓库只收「代码 + 文档」，不入数据/产物/中间调试文件。
+# ============================================================
+
+# ---- 数据（体积大，由 prepare_city.py / 用户手动获取，不入仓）----
+data/
+*.zip
+*.7z
+*.tar.gz
+
+# ---- 运行产物（图数据集 / 模型 / 指标 / 图片，体积大且可复现）----
+results/
+temp/
+*.log
+*.out
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+*.pt
+*.pth
+*.pkl
+*.ckpt
+
+# ---- 调试 / 探针遗留文件（单次排查用，非项目代码）----
+_feature_scan.py
+_fix_emoji2.py
+_fix_tqdm.py
+_tqdm_probe_child.py
+_tqdm_probe_parent.py
+_tqdm_probe_raw.txt
+_umap_inline_test.py
+
+# ---- 已被 prepare_city.py 取代的旧预处理脚本（冗余，勿入仓）----
+prep_euluc_city.py
+prep_sinobf.py
+prep_sinobf_city.py
+
+# ---- 临时 config 变体（勿入仓）----
+config_smoke.yaml
+config_dev.yaml
+config_auto_thresh.yaml
+
+# ---- 环境 / 系统 ----
+.venv/
+venv/
+env/
+.conda/
+.env
+.workbuddy/
+
+# ---- 编辑器 / OS ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
